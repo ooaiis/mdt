@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PDF 교과서 변환기</title>
+<title>디지털 교과서 제작도구</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
@@ -125,7 +125,7 @@ body { font-family: 'Nanum Gothic', -apple-system, sans-serif; background: var(-
 .sb-add-sheet:hover { border-color: var(--blue); color: var(--blue); background: rgba(53,86,232,0.07); }
 
 /* Sidebar footer */
-.sb-footer { padding: 12px 14px; border-top: 1px solid var(--s-bg3); }
+/* .sb-footer removed — controls moved inline */
 .gen-btn {
   width: 100%; padding: 13px;
   background: var(--blue); color: white; border: none; border-radius: var(--r-sm);
@@ -340,6 +340,23 @@ body { font-family: 'Nanum Gothic', -apple-system, sans-serif; background: var(-
         <div class="sb-prog-track"><div class="sb-prog-fill" id="rdFill"></div></div>
       </div>
 
+      <!-- Filename + Generate (shown after PDF load) -->
+      <div id="sbFooter" style="display:none">
+        <div class="sb-div"></div>
+        <div class="sb-sec-lbl" style="margin-bottom:5px">1. 출력 파일명 설정</div>
+        <div style="display:flex;align-items:center;background:var(--s-bg2);border:1.5px solid var(--s-bg4);border-radius:7px;overflow:hidden;margin-bottom:10px;">
+          <input id="fileNameInp" type="text" placeholder="파일 이름 입력"
+            style="flex:1;background:transparent;border:none;outline:none;padding:8px 10px;font-size:12px;color:var(--s-text);font-family:inherit;">
+          <span style="font-size:10px;color:var(--s-muted);padding-right:9px;white-space:nowrap;">.xlsx</span>
+        </div>
+        <div class="sb-sec-lbl" style="margin-bottom:5px">2. 최종 저장</div>
+        <button class="gen-btn" id="genBtn">⬇️ 엑셀 파일 생성</button>
+        <div class="gen-prog" id="genProg" style="margin-top:8px">
+          <div class="gen-lbl" id="genLbl">생성 중...</div>
+          <div class="gen-track"><div class="gen-fill" id="genFill"></div></div>
+        </div>
+      </div>
+
       <!-- Sheet section (hidden before load) -->
       <div id="sheetSec" style="display:none">
         <div class="sb-div"></div>
@@ -350,20 +367,6 @@ body { font-family: 'Nanum Gothic', -apple-system, sans-serif; background: var(-
 
     </div>
 
-    <!-- Footer -->
-    <div class="sb-footer" id="sbFooter" style="display:none">
-      <div class="sb-sec-lbl" style="margin-bottom:5px">출력 파일 이름</div>
-      <div style="display:flex;align-items:center;background:var(--s-bg2);border:1.5px solid var(--s-bg4);border-radius:7px;overflow:hidden;margin-bottom:10px;">
-        <input id="fileNameInp" type="text" placeholder="파일 이름 입력"
-          style="flex:1;background:transparent;border:none;outline:none;padding:8px 10px;font-size:12px;color:var(--s-text);font-family:inherit;">
-        <span style="font-size:10px;color:var(--s-muted);padding-right:9px;white-space:nowrap;">.xlsx</span>
-      </div>
-      <button class="gen-btn" id="genBtn">⬇️ 엑셀 파일 생성</button>
-      <div class="gen-prog" id="genProg">
-        <div class="gen-lbl" id="genLbl">생성 중...</div>
-        <div class="gen-track"><div class="gen-fill" id="genFill"></div></div>
-      </div>
-    </div>
   </aside>
 
   <!-- ═══ PREVIEW PANE ════════════════════════════════ -->
