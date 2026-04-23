@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>교과서 엑셀 변환기</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --blue:   #3556E8;
+  --blue-l: #EBF0FF;
+  --blue-m: #C5D0FF;
+  --purple: #7C3AED;
+  --purple-l: #F3F0FF;
+  --green:  #10B981;
+  --red:    #EF4444;
+
+  /* Sidebar (dark) */
+  --s-bg:   #101420;
+  --s-bg2:  #181D2E;
+  --s-bg3:  #222840;
+  --s-bg4:  #2C3350;
+  --s-text: #E0E4F2;
+  --s-muted:#7A84A0;
+
+  /* Panels (light) */
+  --p-bg:   #F0F3FA;
+  --p-bg2:  #F8F9FD;
+  --white:  #FFFFFF;
+  --text:   #1C2040;
+  --muted:  #6B728A;
+  --border: #E0E5F2;
+  --shadow: 0 2px 14px rgba(0,0,0,0.07);
+  --r: 12px;
+  --r-sm: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: 'Nanum Gothic', -apple-system, sans-serif; background: var(--p-bg); color: var(--text); }
+
+/* ══════════════════════════════════════════
+   APP SHELL  — 3-panel flex layout
+   Left: flex 2  (= 40%)
+   Preview: flex 0.9  (= 18%  → 3/10 of right 3/5)
+   Work: flex 2.1  (= 42%  → 7/10 of right 3/5)
+   Total flex = 5  ✓ matches 2:3 split, right 3:7
+══════════════════════════════════════════ */
+.app { display: flex; height: 100vh; overflow: hidden; }
+
+/* ── Sidebar ─────────────────────────────── */
+.sidebar {
+  flex: 2;
+  min-width: 210px; max-width: 340px;
+  background: var(--s-bg);
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--s-bg3);
+  overflow: hidden;
+}
+.sb-scroll { flex: 1; overflow-y: auto; padding: 18px 14px 10px; }
+.sb-scroll::-webkit-scrollbar { width: 3px; }
+.sb-scroll::-webkit-scrollbar-thumb { background: var(--s-bg4); border-radius: 2px; }
+
+/* Logo */
+.logo { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.logo-ico {
+  width: 38px; height: 38px; background: var(--blue); border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; font-size: 19px; flex-shrink: 0;
+}
+.logo-title { font-size: 14px; font-weight: 800; color: var(--s-text); line-height: 1.25; }
+.logo-sub { font-size: 10px; color: var(--s-muted); margin-top: 2px; }
+
+/* Upload btn */
+.up-btn {
+  width: 100%; padding: 11px 13px; border-radius: var(--r-sm);
+  background: var(--s-bg2); border: 1.5px dashed var(--s-bg4);
+  cursor: pointer; display: flex; align-items: center; gap: 10px; transition: all 0.2s;
+  margin-bottom: 8px;
+}
+.up-btn:hover { border-color: var(--blue); background: var(--s-bg3); }
+.up-btn.done { border-style: solid; border-color: var(--green); background: rgba(16,185,129,0.08); cursor: default; }
+.up-btn input { display: none; }
+.up-ico { font-size: 18px; flex-shrink: 0; }
+.up-name { font-size: 12px; font-weight: 800; color: var(--s-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.up-sub  { font-size: 10px; color: var(--s-muted); margin-top: 1px; }
+
+/* Progress bar */
+.sb-prog { display: none; margin-bottom: 10px; }
+.sb-prog-lbl { font-size: 10px; color: var(--s-muted); margin-bottom: 4px; }
+.sb-prog-track { height: 3px; background: var(--s-bg3); border-radius: 2px; overflow: hidden; }
+.sb-prog-fill  { height: 100%; background: var(--blue); border-radius: 2px; transition: width 0.25s; width: 0; }
+
+.sb-div { height: 1px; background: var(--s-bg3); margin: 14px 0; }
+.sb-sec-lbl { font-size: 9px; font-weight: 800; color: var(--s-muted); letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 6px; }
+
+/* Sheet items */
+.sheet-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: var(--r-sm);
+  cursor: pointer; transition: all 0.15s; margin-bottom: 3px;
+  border: 1.5px solid transparent;
+}
+.sheet-item:hover { background: var(--s-bg2); }
+.sheet-item.on { background: var(--s-bg3); border-color: var(--blue); }
+.sh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--s-bg4); flex-shrink: 0; }
+.sheet-item.on .sh-dot { background: var(--blue); }
+.sh-name { flex: 1; font-size: 12px; font-weight: 700; color: var(--s-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-cnt  { font-size: 10px; color: var(--s-muted); flex-shrink: 0; }
+.sh-del  {
+  width: 18px; height: 18px; border-radius: 4px; background: rgba(239,68,68,0.12);
+  border: none; cursor: pointer; color: var(--red); font-size: 10px;
+  display: none; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.sheet-item:hover .sh-del { display: flex; }
+.sh-del:hover { background: rgba(239,68,68,0.28); }
+
+.sb-add-sheet {
+  width: 100%; padding: 8px 10px; border-radius: var(--r-sm);
+  border: 1.5px dashed var(--s-bg4); background: transparent;
+  cursor: pointer; font-size: 11px; font-weight: 800; color: var(--s-muted);
+  font-family: inherit; transition: all 0.15s; text-align: left;
+  display: flex; align-items: center; gap: 7px;
+}
+.sb-add-sheet:hover { border-color: var(--blue); color: var(--blue); background: rgba(53,86,232,0.07); }
+
+/* Sidebar footer */
+.sb-footer { padding: 12px 14px; border-top: 1px solid var(--s-bg3); }
+.gen-btn {
+  width: 100%; padding: 13px;
+  background: var(--blue); color: white; border: none; border-radius: var(--r-sm);
+  font-size: 13px; font-weight: 800; cursor: pointer; font-family: inherit;
+  transition: all 0.2s; box-shadow: 0 3px 12px rgba(53,86,232,0.4);
+}
+.gen-btn:hover { background: #2744D4; transform: translateY(-1px); }
+.gen-btn:disabled { background: var(--s-bg4); box-shadow: none; cursor: not-allowed; transform: none; color: var(--s-muted); }
+.gen-prog { display: none; margin-top: 8px; }
+.gen-lbl  { font-size: 10px; color: var(--s-muted); margin-bottom: 4px; }
+.gen-track { height: 3px; background: var(--s-bg3); border-radius: 2px; overflow: hidden; }
+.gen-fill  { height: 100%; background: var(--blue); border-radius: 2px; transition: width 0.25s; width: 0; }
+
+/* ══════════════════════════════════════════
+   PREVIEW PANE — flex 0.9
+══════════════════════════════════════════ */
+.preview-pane {
+  flex: 0.9;
+  min-width: 130px; max-width: 280px;
+  background: var(--p-bg2);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.pane-hdr {
+  padding: 13px 14px 11px;
+  border-bottom: 1px solid var(--border);
+  background: var(--white); flex-shrink: 0;
+}
+.pane-hdr-title { font-size: 12px; font-weight: 800; color: var(--text); }
+.pane-hdr-sub   { font-size: 10px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+.preview-scroll { flex: 1; overflow-y: auto; padding: 10px; }
+.preview-scroll::-webkit-scrollbar { width: 4px; }
+.preview-scroll::-webkit-scrollbar-thumb { background: var(--blue-m); border-radius: 2px; }
+
+.thumb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+
+.pg-thumb {
+  position: relative; border-radius: 5px; overflow: hidden;
+  border: 2px solid var(--border); cursor: pointer; aspect-ratio: 0.707;
+  background: #d8dce8; transition: border-color 0.15s, transform 0.12s, box-shadow 0.15s;
+}
+.pg-thumb canvas,
+.pg-thumb img { width: 100%; height: 100%; display: block; object-fit: fill; }
+.pg-thumb:hover { border-color: var(--blue); transform: scale(1.03); box-shadow: 0 3px 10px rgba(53,86,232,0.18); }
+.pg-thumb.sel { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue), 0 3px 8px rgba(53,86,232,0.22); }
+.pg-num { position: absolute; bottom: 2px; right: 3px; background: rgba(0,0,0,0.55); color: #fff; font-size: 9px; border-radius: 3px; padding: 1px 4px; font-weight: 700; }
+.pg-ord { position: absolute; top: 3px; left: 3px; background: var(--blue); color: #fff; width: 17px; height: 17px; border-radius: 50%; font-size: 9px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+/* Selected: gray overlay + checkmark */
+.pg-overlay { position: absolute; inset: 0; background: rgba(20,24,50,0.48); display: flex; align-items: center; justify-content: center; pointer-events: none; border-radius: 3px; }
+.pg-check { width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,0.93); display: flex; align-items: center; justify-content: center; font-size: 15px; color: var(--blue); box-shadow: 0 2px 8px rgba(0,0,0,0.22); }
+/* Pages selected in OTHER rows/sheets (global memory) */
+.pg-overlay.other { background: rgba(20,24,50,0.30); }
+.pg-overlay.other .pg-check { background: rgba(255,255,255,0.75); color: var(--muted); width: 24px; height: 24px; font-size: 12px; }
+
+/* ══════════════════════════════════════════
+   WORK PANE — flex 2.1
+══════════════════════════════════════════ */
+.work-pane {
+  flex: 2.1;
+  background: var(--p-bg);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.work-hdr {
+  padding: 13px 20px 11px;
+  border-bottom: 1px solid var(--border);
+  background: var(--white); flex-shrink: 0;
+  display: flex; align-items: center; gap: 10px;
+}
+.work-hdr-lbl { font-size: 10px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0; }
+.work-hdr-inp {
+  border: none; outline: none; font-size: 15px; font-weight: 800;
+  color: var(--text); font-family: inherit; background: transparent; flex: 1; min-width: 0;
+}
+.work-hdr-inp::placeholder { color: #C8CEDF; }
+
+.work-scroll { flex: 1; overflow-y: auto; padding: 16px 20px 40px; }
+.work-scroll::-webkit-scrollbar { width: 5px; }
+.work-scroll::-webkit-scrollbar-thumb { background: var(--blue-m); border-radius: 3px; }
+
+/* Row cards */
+.row-card {
+  background: var(--white); border-radius: var(--r); margin-bottom: 10px;
+  border: 2px solid var(--border); cursor: pointer; transition: all 0.18s; overflow: hidden;
+}
+.row-card:hover:not(.active) { border-color: var(--blue-m); box-shadow: var(--shadow); }
+.row-card.active { border-color: var(--blue); cursor: default; box-shadow: 0 4px 20px rgba(53,86,232,0.12); }
+
+.row-card-hdr {
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  background: var(--p-bg2);
+}
+.row-card.active .row-card-hdr { background: var(--blue-l); border-bottom-color: var(--blue-m); }
+.row-num {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--border); color: var(--muted);
+  font-size: 11px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.row-card.active .row-num { background: var(--blue); color: white; }
+.row-hdr-info { flex: 1; }
+.row-hdr-t { font-size: 12px; font-weight: 800; color: var(--text); }
+.row-hdr-s { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.active-badge { background: var(--blue); color: white; padding: 2px 7px; border-radius: 20px; font-size: 9px; font-weight: 800; }
+.row-del-btn { background: transparent; border: none; cursor: pointer; color: var(--muted); font-size: 14px; padding: 3px; border-radius: 4px; transition: all 0.15s; }
+.row-del-btn:hover { background: #FEE2E2; color: var(--red); }
+
+.row-card-body { padding: 12px 14px; }
+
+/* Compact summary */
+.row-summary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.row-empty-hint { font-size: 11px; color: var(--muted); }
+.pg-chip { background: var(--p-bg); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; font-size: 10px; color: var(--text); font-weight: 700; }
+.edit-hint { font-size: 10px; color: var(--blue); font-weight: 800; }
+.act-chip { background: var(--purple-l); border: 1.5px solid #C4B5FD; border-radius: 5px; padding: 2px 7px; font-size: 10px; color: var(--purple); font-weight: 700; }
+
+/* Active row: editing */
+.edit-hint-box { font-size: 12px; color: var(--muted); padding: 6px 0 12px; line-height: 1.5; }
+.sel-pages { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.sel-page {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  background: var(--p-bg); border: 1.5px solid var(--blue-m);
+  border-radius: 8px; padding: 7px; min-width: 82px; max-width: 100px;
+}
+.sel-pg-num  { font-size: 9px; font-weight: 800; color: var(--blue); }
+.sel-pg-img  { width: 60px; height: 85px; object-fit: fill; border-radius: 4px; border: 1px solid var(--blue-m); }
+.sel-pg-inp  {
+  width: 100%; padding: 3px 5px; border: 1.5px solid var(--blue-m);
+  border-radius: 4px; font-size: 10px; text-align: center; font-family: inherit;
+  background: white; color: var(--text);
+}
+.sel-pg-inp:focus { outline: none; border-color: var(--blue); }
+.sel-pg-rm   { background: #FEE2E2; color: var(--red); border: none; border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 9px; font-weight: 800; font-family: inherit; }
+.sel-pg-rm:hover { background: #FECACA; }
+
+/* Toggle */
+.tog-row { display: flex; align-items: flex-start; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.tog {
+  width: 38px; height: 21px; border-radius: 11px; background: #D1D5DB;
+  cursor: pointer; position: relative; transition: background 0.2s; flex-shrink: 0; margin-top: 1px;
+}
+.tog.on { background: var(--purple); }
+.tog::after { content: ''; position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; background: white; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+.tog.on::after { transform: translateX(17px); }
+.tog-lbl  { font-size: 12px; font-weight: 800; color: var(--text); }
+.tog-sub  { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.act-inp-box { margin-top: 8px; }
+.act-inp {
+  width: 100%; padding: 7px 11px; border: 1.5px solid #DDD6FF;
+  border-radius: 7px; font-size: 12px; font-family: inherit;
+  background: var(--purple-l); color: var(--text);
+}
+.act-inp:focus { outline: none; border-color: var(--purple); }
+
+/* Add row btn */
+.add-row-btn {
+  width: 100%; padding: 11px; border-radius: var(--r);
+  border: 2px dashed var(--blue-m); background: transparent;
+  cursor: pointer; font-size: 12px; font-weight: 800; color: var(--blue);
+  font-family: inherit; transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.add-row-btn:hover { border-color: var(--blue); background: var(--blue-l); }
+
+/* Layout preview */
+.layout-wrap { margin-top: 14px; padding: 12px 14px; background: var(--white); border-radius: var(--r); border: 1px solid var(--border); }
+.layout-ttl  { font-size: 9px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
+.layout-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.lchip { padding: 3px 8px; border-radius: 5px; font-size: 10px; font-weight: 700; border: 1.5px solid; }
+.lchip.img { background: var(--blue-l); border-color: var(--blue); color: var(--blue); }
+.lchip.spc { background: var(--p-bg); border-color: var(--border); color: var(--muted); font-weight: 400; }
+.lchip.act { background: var(--purple-l); border-color: #C4B5FD; color: var(--purple); }
+
+/* Empty state */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 16px; text-align: center; height: 100%; }
+.empty-ico  { font-size: 36px; margin-bottom: 10px; opacity: 0.4; }
+.empty-t    { font-size: 13px; font-weight: 800; color: var(--muted); }
+.empty-s    { font-size: 11px; color: var(--muted); margin-top: 5px; opacity: 0.8; line-height: 1.5; }
+
+/* Loading skeleton */
+.thumb-skel { width: 100%; aspect-ratio: 0.707; background: linear-gradient(90deg, #d8dce8 25%, #e8ebf4 50%, #d8dce8 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 4px; }
+@keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ═══ LEFT SIDEBAR ═══════════════════════════════ -->
+  <aside class="sidebar">
+    <div class="sb-scroll">
+
+      <!-- Logo -->
+      <div class="logo">
+        <div class="logo-ico">📚</div>
+        <div>
+          <div class="logo-title">교과서 변환기</div>
+          <div class="logo-sub">550 × 716 pt · Excel 활동지</div>
+        </div>
+      </div>
+
+      <!-- Upload -->
+      <div class="up-btn" id="upBtn">
+        <input type="file" id="pdfIn" accept=".pdf">
+        <span class="up-ico" id="upIco">📄</span>
+        <div>
+          <div class="up-name" id="upName">PDF 파일 업로드</div>
+          <div class="up-sub"  id="upSub">클릭하거나 드래그</div>
+        </div>
+      </div>
+      <div class="sb-prog" id="rdProg">
+        <div class="sb-prog-lbl" id="rdLbl">로딩 중...</div>
+        <div class="sb-prog-track"><div class="sb-prog-fill" id="rdFill"></div></div>
+      </div>
+
+      <!-- Sheet section (hidden before load) -->
+      <div id="sheetSec" style="display:none">
+        <div class="sb-div"></div>
+        <div class="sb-sec-lbl">시트 관리</div>
+        <div id="sheetNav"></div>
+        <button class="sb-add-sheet" id="addSheetBtn">＋ 시트 추가</button>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="sb-footer" id="sbFooter" style="display:none">
+      <div class="sb-sec-lbl" style="margin-bottom:5px">출력 파일 이름</div>
+      <div style="display:flex;align-items:center;background:var(--s-bg2);border:1.5px solid var(--s-bg4);border-radius:7px;overflow:hidden;margin-bottom:10px;">
+        <input id="fileNameInp" type="text" placeholder="파일 이름 입력"
+          style="flex:1;background:transparent;border:none;outline:none;padding:8px 10px;font-size:12px;color:var(--s-text);font-family:inherit;">
+        <span style="font-size:10px;color:var(--s-muted);padding-right:9px;white-space:nowrap;">.xlsx</span>
+      </div>
+      <button class="gen-btn" id="genBtn">⬇️ 엑셀 파일 생성</button>
+      <div class="gen-prog" id="genProg">
+        <div class="gen-lbl" id="genLbl">생성 중...</div>
+        <div class="gen-track"><div class="gen-fill" id="genFill"></div></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══ PREVIEW PANE ════════════════════════════════ -->
+  <div class="preview-pane">
+    <div class="pane-hdr">
+      <div class="pane-hdr-title">PDF 미리보기</div>
+      <div class="pane-hdr-sub" id="prevSub">PDF를 업로드하세요</div>
+    </div>
+    <div class="preview-scroll">
+      <div id="prevContent">
+        <div class="empty-state">
+          <div class="empty-ico">📄</div>
+          <div class="empty-t">미리보기</div>
+          <div class="empty-s">PDF를 업로드하면<br>페이지가 표시됩니다</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ WORK PANE ════════════════════════════════════ -->
+  <div class="work-pane">
+    <div class="work-hdr">
+      <div class="work-hdr-lbl">시트 이름</div>
+      <input class="work-hdr-inp" id="sheetNameInp" placeholder="시트 이름 입력" style="display:none">
+      <div id="workHdrPlaceholder" style="font-size:15px;font-weight:800;color:var(--muted)">작업 공간</div>
+    </div>
+    <div class="work-scroll" id="workScroll">
+      <div class="empty-state">
+        <div class="empty-ico">🖼️</div>
+        <div class="empty-t">PDF를 업로드하면 시작됩니다</div>
+        <div class="empty-s">좌측에서 PDF를 업로드한 후<br>미리보기에서 페이지를 선택하세요</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── State ─────────────────────────────────────────────────────────────
+let pdfDoc = null, pdfName = '교과서_활동지', thumbs = {};
+let sheets = [], activeSheetId = null, activeRowId = null, uid = 0;
+
+function newRow()  { return { id: ++uid, pages: [], activity: false, actTitle: '활동 기록' }; }
+function newSheet(n) { const id = ++uid; return { id, name: n, rows: [newRow()] }; }
+function curSheet() { return sheets.find(s => s.id === activeSheetId); }
+function curRow()   { const s = curSheet(); return s ? s.rows.find(r => r.id === activeRowId) : null; }
+function el(t,c) { const e = document.createElement(t); if(c) e.className=c; return e; }
+function div(c) { return el('div',c); }
+function colLtr(n) { let s=''; while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s; }
+
+// ── Upload ────────────────────────────────────────────────────────────
+const upBtn = document.getElementById('upBtn');
+const pdfIn = document.getElementById('pdfIn');
+upBtn.addEventListener('click', () => !upBtn.classList.contains('done') && pdfIn.click());
+pdfIn.addEventListener('change', e => e.target.files[0] && loadPDF(e.target.files[0]));
+upBtn.addEventListener('dragover', e => { e.preventDefault(); upBtn.style.borderColor = 'var(--blue)'; });
+upBtn.addEventListener('dragleave', () => upBtn.style.borderColor = '');
+upBtn.addEventListener('drop', e => {
+  e.preventDefault(); upBtn.style.borderColor = '';
+  const f = e.dataTransfer.files[0];
+  if (f?.type === 'application/pdf') loadPDF(f);
+});
+
+async function loadPDF(file) {
+  pdfName = file.name.replace(/\.pdf$/i, '');
+  document.getElementById('rdProg').style.display = 'block';
+
+  // Show skeleton grid in preview immediately
+  document.getElementById('prevContent').innerHTML = buildSkeletonGrid(6);
+  document.getElementById('prevSub').textContent = '미리보기 생성 중...';
+
+  try {
+    const ab = await file.arrayBuffer();
+    pdfDoc = await pdfjsLib.getDocument({ data: ab, cMapPacked: true }).promise;
+    const total = pdfDoc.numPages;
+
+    // Build full skeleton grid
+    document.getElementById('prevContent').innerHTML = buildSkeletonGrid(total);
+
+    for (let i = 1; i <= total; i++) {
+      document.getElementById('rdLbl').textContent = `미리보기 생성 중 (${i}/${total})`;
+      document.getElementById('rdFill').style.width = `${(i / total) * 100}%`;
+
+      // Render thumbnail and immediately update in grid
+      thumbs[i] = await renderPage(i, 180);
+      const slot = document.getElementById(`thSlot_${i}`);
+      if (slot) {
+        slot.innerHTML = '';
+        const img = new Image();
+        img.style.cssText = 'width:100%;height:100%;display:block;object-fit:fill;';
+        img.src = thumbs[i];
+        slot.appendChild(img);
+      }
+    }
+
+    document.getElementById('rdProg').style.display = 'none';
+    upBtn.classList.add('done');
+    document.getElementById('upIco').textContent = '✅';
+    document.getElementById('upName').textContent = file.name;
+    document.getElementById('upSub').textContent = `${total}쪽 로드 완료`;
+    document.getElementById('fileNameInp').value = pdfName + '_활동지';
+
+    // Init sheets
+    sheets = [newSheet('시트1')];
+    activeSheetId = sheets[0].id;
+    activeRowId = sheets[0].rows[0].id;
+
+    document.getElementById('sheetSec').style.display = 'block';
+    document.getElementById('sbFooter').style.display = 'block';
+
+    renderAll();
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById('rdProg').style.display = 'none';
+    alert('PDF 로드 오류: ' + err.message);
+  }
+}
+
+function buildSkeletonGrid(n) {
+  let html = '<div class="thumb-grid">';
+  for (let i = 1; i <= n; i++) {
+    html += `<div class="pg-thumb" id="pgThumb_${i}" onclick="togglePage(${i})">
+      <div id="thSlot_${i}" style="width:100%;height:100%;"><div class="thumb-skel"></div></div>
+      <div class="pg-num">${i}쪽</div>
+    </div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+async function renderPage(pageNum, targetW) {
+  const page = await pdfDoc.getPage(pageNum);
+  const vp   = page.getViewport({ scale: 1 });
+  const sv   = page.getViewport({ scale: targetW / vp.width });
+  const c    = document.createElement('canvas');
+  c.width  = Math.max(1, Math.round(sv.width));
+  c.height = Math.max(1, Math.round(sv.height));
+  await page.render({ canvasContext: c.getContext('2d'), viewport: sv }).promise;
+  return c.toDataURL('image/png');
+}
+
+// ── Render all ────────────────────────────────────────────────────────
+function renderAll() {
+  renderSheetNav();
+  renderSheetName();
+  updatePreviewHighlights();
+  renderWork();
+}
+
+// ── Sheet Nav ─────────────────────────────────────────────────────────
+function renderSheetNav() {
+  const nav = document.getElementById('sheetNav');
+  nav.innerHTML = '';
+  for (const sh of sheets) {
+    const item = div('sheet-item' + (sh.id === activeSheetId ? ' on' : ''));
+    item.onclick = () => {
+      if (activeSheetId === sh.id) return;
+      activeSheetId = sh.id;
+      activeRowId = sh.rows[0]?.id || null;
+      renderAll();
+    };
+    const dot = div('sh-dot'); item.appendChild(dot);
+    const nm = div('sh-name'); nm.textContent = sh.name; item.appendChild(nm);
+    const total = sh.rows.reduce((a,r) => a + r.pages.length, 0);
+    const cnt = div('sh-cnt'); cnt.textContent = total ? `${total}장` : ''; item.appendChild(cnt);
+    if (sheets.length > 1) {
+      const del = div('sh-del'); del.textContent = '✕';
+      del.onclick = e => {
+        e.stopPropagation();
+        sheets = sheets.filter(s => s.id !== sh.id);
+        if (activeSheetId === sh.id) { activeSheetId = sheets[0].id; activeRowId = sheets[0].rows[0]?.id || null; }
+        renderAll();
+      };
+      item.appendChild(del);
+    }
+    nav.appendChild(item);
+  }
+}
+
+document.getElementById('addSheetBtn').onclick = () => {
+  const sh = newSheet(`시트${sheets.length + 1}`);
+  sheets.push(sh);
+  activeSheetId = sh.id;
+  activeRowId = sh.rows[0].id;
+  renderAll();
+};
+
+// ── Sheet Name ────────────────────────────────────────────────────────
+function renderSheetName() {
+  const inp = document.getElementById('sheetNameInp');
+  const ph  = document.getElementById('workHdrPlaceholder');
+  const sh  = curSheet();
+  if (sh) {
+    inp.style.display = 'block'; ph.style.display = 'none';
+    inp.value = sh.name;
+    inp.oninput = () => { sh.name = inp.value; renderSheetNav(); };
+  } else {
+    inp.style.display = 'none'; ph.style.display = 'block';
+  }
+}
+
+// ── Preview grid highlights ───────────────────────────────────────────
+function updatePreviewHighlights() {
+  if (!pdfDoc) return;
+  const row = curRow();
+  // Current active row pages
+  const curSet = new Set(row ? row.pages.map(p => p.num) : []);
+  // ALL pages selected anywhere across all sheets & rows
+  const globalSet = new Set();
+  sheets.forEach(sh => sh.rows.forEach(r => r.pages.forEach(p => globalSet.add(p.num))));
+
+  const total = pdfDoc.numPages;
+  for (let i = 1; i <= total; i++) {
+    const thumb = document.getElementById(`pgThumb_${i}`);
+    if (!thumb) continue;
+    thumb.querySelector('.pg-ord')?.remove();
+    thumb.querySelector('.pg-overlay')?.remove();
+
+    if (curSet.has(i)) {
+      // Selected in current active row → blue border + full overlay + order badge
+      thumb.classList.add('sel');
+      const idx = row.pages.findIndex(p => p.num === i);
+      const overlay = div('pg-overlay');
+      const check = div('pg-check'); check.textContent = '✓';
+      overlay.appendChild(check); thumb.appendChild(overlay);
+      const ord = div('pg-ord'); ord.textContent = idx + 1;
+      thumb.appendChild(ord);
+    } else if (globalSet.has(i)) {
+      // Selected in another row/sheet → dimmer overlay, no blue border
+      thumb.classList.remove('sel');
+      const overlay = div('pg-overlay other');
+      const check = div('pg-check'); check.textContent = '✓';
+      overlay.appendChild(check); thumb.appendChild(overlay);
+    } else {
+      thumb.classList.remove('sel');
+    }
+  }
+
+  // Update sub label
+  const sh = curSheet();
+  const rowIdx = sh ? sh.rows.findIndex(r => r.id === activeRowId) : -1;
+  document.getElementById('prevSub').textContent =
+    rowIdx >= 0 ? `${rowIdx + 1}번째 행에 추가 중 · 클릭 선택` : '페이지를 클릭하여 추가';
+}
+
+function togglePage(n) {
+  const row = curRow();
+  if (!row) return;
+  const idx = row.pages.findIndex(p => p.num === n);
+  if (idx !== -1) row.pages.splice(idx, 1);
+  else row.pages.push({ num: n, title: `${n}쪽` });
+  updatePreviewHighlights();
+  renderWork();
+  renderSheetNav();
+}
+
+// ── Work Pane ─────────────────────────────────────────────────────────
+function renderWork() {
+  const sh = curSheet();
+  const scroll = document.getElementById('workScroll');
+  scroll.innerHTML = '';
+  if (!sh) return;
+
+  sh.rows.forEach((row, idx) => scroll.appendChild(buildRowCard(sh, row, idx)));
+
+  const addBtn = el('button', 'add-row-btn');
+  addBtn.textContent = '＋ 행 추가';
+  addBtn.onclick = () => {
+    const nr = newRow(); sh.rows.push(nr); activeRowId = nr.id;
+    renderAll();
+  };
+  scroll.appendChild(addBtn);
+
+  const maxN = sh.rows.reduce((m,r) => Math.max(m, r.pages.length), 0);
+  if (maxN > 0) {
+    const lw = div('layout-wrap');
+    const lt = div('layout-ttl'); lt.textContent = '엑셀 열 배치'; lw.appendChild(lt);
+    const lc = div('layout-chips');
+    const hasAct = sh.rows.some(r => r.activity);
+    for (let i = 0; i < maxN; i++) {
+      const ic = div('lchip img'); ic.textContent = `${colLtr(i*2+1)}열`; lc.appendChild(ic);
+      const sc = div('lchip spc'); sc.textContent = `${colLtr(i*2+2)}열`; lc.appendChild(sc);
+    }
+    if (hasAct) {
+      const sc2 = div('lchip spc'); sc2.textContent = `${colLtr(maxN*2+1)}열`; lc.appendChild(sc2);
+      const ac = div('lchip act'); ac.textContent = `${colLtr(maxN*2+2)}열 활동`; lc.appendChild(ac);
+    }
+    lw.appendChild(lc); scroll.appendChild(lw);
+  }
+}
+
+function buildRowCard(sh, row, rowIdx) {
+  const isActive = row.id === activeRowId;
+  const card = div('row-card' + (isActive ? ' active' : ''));
+  if (!isActive) {
+    card.onclick = () => { activeRowId = row.id; updatePreviewHighlights(); renderWork(); };
+  }
+
+  // Header
+  const hdr = div('row-card-hdr');
+  const num = div('row-num'); num.textContent = rowIdx + 1;
+  const info = div('row-hdr-info');
+  const ht = div('row-hdr-t'); ht.textContent = `${rowIdx + 1}번째 행`;
+  const hs = div('row-hdr-s'); hs.textContent = `엑셀 ${rowIdx*2+2}행(제목) · ${rowIdx*2+3}행(이미지)`;
+  info.appendChild(ht); info.appendChild(hs);
+  hdr.appendChild(num); hdr.appendChild(info);
+  if (isActive) { const b = div('active-badge'); b.textContent = '편집 중'; hdr.appendChild(b); }
+  if (sh.rows.length > 1) {
+    const del = el('button', 'row-del-btn'); del.textContent = '✕';
+    del.onclick = e => {
+      e.stopPropagation();
+      sh.rows = sh.rows.filter(r => r.id !== row.id);
+      if (activeRowId === row.id) activeRowId = sh.rows[0]?.id || null;
+      renderAll();
+    };
+    hdr.appendChild(del);
+  }
+  card.appendChild(hdr);
+
+  // Body
+  const body = div('row-card-body');
+
+  if (isActive) {
+    // Full editing UI
+    if (row.pages.length === 0) {
+      const h = div('edit-hint-box');
+      h.textContent = '← 왼쪽 미리보기에서 페이지를 클릭하여 추가하세요';
+      body.appendChild(h);
+    } else {
+      const sp = div('sel-pages');
+      row.pages.forEach((p, i) => {
+        const item = div('sel-page');
+        const pn = div('sel-pg-num'); pn.textContent = `${i+1}번째`;
+        const img = el('img', 'sel-pg-img'); img.src = thumbs[p.num] || ''; img.alt = `${p.num}쪽`;
+        const inp = el('input', 'sel-pg-inp');
+        inp.type='text'; inp.value=p.title; inp.placeholder=`${p.num}쪽`;
+        inp.oninput = () => { p.title = inp.value; };
+        inp.onclick = e => e.stopPropagation();
+        const rm = el('button', 'sel-pg-rm'); rm.textContent = '✕ 제거';
+        rm.onclick = e => {
+          e.stopPropagation();
+          row.pages.splice(i, 1);
+          updatePreviewHighlights(); renderWork(); renderSheetNav();
+        };
+        item.appendChild(pn); item.appendChild(img); item.appendChild(inp); item.appendChild(rm);
+        sp.appendChild(item);
+      });
+      body.appendChild(sp);
+    }
+
+    // Activity toggle
+    const tr = div('tog-row');
+    const tog = div('tog' + (row.activity ? ' on' : ''));
+    const actBox = div('act-inp-box'); actBox.style.display = row.activity ? 'block' : 'none';
+    tog.onclick = () => {
+      row.activity = !row.activity;
+      tog.classList.toggle('on', row.activity);
+      actBox.style.display = row.activity ? 'block' : 'none';
+    };
+    const td = div('');
+    const tl = div('tog-lbl'); tl.textContent = '활동 기록 열 추가';
+    const ts = div('tog-sub'); ts.textContent = '이미지 옆에 활동 입력 공간 (이미지 높이만큼)';
+    td.appendChild(tl); td.appendChild(ts);
+    tr.appendChild(tog); tr.appendChild(td); body.appendChild(tr);
+    const ai = el('input', 'act-inp'); ai.type='text'; ai.value=row.actTitle; ai.placeholder='예) 활동 기록, 나의 생각';
+    ai.oninput = () => { row.actTitle = ai.value; };
+    ai.onclick = e => e.stopPropagation();
+    actBox.appendChild(ai); body.appendChild(actBox);
+
+  } else {
+    // Compact summary
+    const sum = div('row-summary');
+    if (row.pages.length === 0) {
+      const h = div('row-empty-hint'); h.textContent = '페이지 없음 · 클릭하여 편집'; sum.appendChild(h);
+    } else {
+      row.pages.forEach(p => { const c = div('pg-chip'); c.textContent = `${p.num}쪽`; sum.appendChild(c); });
+      const eh = div('edit-hint'); eh.textContent = '클릭하여 편집'; sum.appendChild(eh);
+    }
+    if (row.activity) { const ac = div('act-chip'); ac.textContent = '활동 칸 있음'; sum.appendChild(ac); }
+    body.appendChild(sum);
+  }
+
+  card.appendChild(body);
+  return card;
+}
+
+// ── Excel Generation ──────────────────────────────────────────────────
+document.getElementById('genBtn').onclick = generateExcel;
+
+const PT2PX = 96 / 72;
+const IMG_W_PX = Math.round(550 * PT2PX);  // 733
+const IMG_H_PX = Math.round(716 * PT2PX);  // 955
+const IMG_H_PT = 716;
+const IMG_COL_W = Math.round(IMG_W_PX / 7.5);  // ~98
+const SPACER_W  = 2;
+const ACT_COL_W = 50;
+
+async function generateExcel() {
+  const valid = sheets.filter(s => s.rows.some(r => r.pages.length > 0));
+  if (!valid.length) { alert('페이지를 선택한 시트가 없습니다.'); return; }
+
+  const btn  = document.getElementById('genBtn');
+  const prog = document.getElementById('genProg');
+  const lbl  = document.getElementById('genLbl');
+  const fill = document.getElementById('genFill');
+  btn.disabled = true; btn.textContent = '⏳ 생성 중...';
+  prog.style.display = 'block';
+  fill.style.background = 'linear-gradient(90deg,#3556E8,#7B92FF)';
+  fill.style.width = '0';
+
+  try {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = '교과서 엑셀 변환기'; wb.created = new Date();
+    const totalImgs = valid.reduce((a,s) => a + s.rows.reduce((b,r) => b + r.pages.length, 0), 0);
+    let done = 0;
+
+    for (const sh of valid) {
+      const ws = wb.addWorksheet(sh.name);
+      const maxN   = sh.rows.reduce((m,r) => Math.max(m, r.pages.length), 0);
+      const hasAct = sh.rows.some(r => r.activity);
+      const actColIdx = hasAct ? maxN*2+2 : null;
+
+      for (let i = 0; i < maxN; i++) {
+        ws.getColumn(i*2+1).width = IMG_COL_W;
+        ws.getColumn(i*2+2).width = SPACER_W;
+      }
+      if (actColIdx) { ws.getColumn(maxN*2+1).width = SPACER_W; ws.getColumn(actColIdx).width = ACT_COL_W; }
+      ws.getRow(1).height = 22;
+
+      for (let ri = 0; ri < sh.rows.length; ri++) {
+        const row = sh.rows[ri];
+        const n = row.pages.length;
+        if (!n) continue;
+        const tRow = 2 + ri*2, iRow = 3 + ri*2;
+        ws.getRow(tRow).height = 26;
+        ws.getRow(iRow).height = IMG_H_PT;
+
+        for (let i = 0; i < n; i++) {
+          const c1 = colLtr(i*2+1), c2 = colLtr(i*2+2);
+          ws.mergeCells(`${c1}${tRow}:${c2}${tRow}`);
+          const cell = ws.getCell(`${c1}${tRow}`);
+          cell.value = row.pages[i].title || `${row.pages[i].num}쪽`;
+          cell.font = { bold: true, size: 11, color: { argb: 'FF3556E8' } };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF0FF' } };
+          cell.border = { bottom: { style: 'medium', color: { argb: 'FF3556E8' } } };
+        }
+        if (row.activity && actColIdx) {
+          const ac = colLtr(actColIdx);
+          const c = ws.getCell(`${ac}${tRow}`);
+          c.value = row.actTitle; c.font = { bold: true, size: 11, color: { argb: 'FF7C3AED' } };
+          c.alignment = { horizontal: 'center', vertical: 'middle' };
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F0FF' } };
+          c.border = { bottom: { style: 'medium', color: { argb: 'FF7C3AED' } } };
+        }
+
+        for (let i = 0; i < n; i++) {
+          const pg = row.pages[i];
+          lbl.textContent = `"${sh.name}" ${ri+1}행 · ${pg.num}쪽 (${done+1}/${totalImgs})`;
+          fill.style.width = `${(done/totalImgs)*90}%`;
+          const dataUrl = await renderPage(pg.num, 900);
+          const imgId = wb.addImage({ base64: dataUrl.split(',')[1], extension: 'png' });
+          ws.addImage(imgId, { tl: { col: i*2, row: iRow-1 }, ext: { width: IMG_W_PX, height: IMG_H_PX } });
+          done++;
+          await new Promise(r => setTimeout(r, 10));
+        }
+
+        if (row.activity && actColIdx) {
+          const ac = colLtr(actColIdx);
+          const c = ws.getCell(`${ac}${iRow}`);
+          c.alignment = { wrapText: true, vertical: 'top' };
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCFAFF' } };
+          c.border = { top:{style:'medium',color:{argb:'FF7C3AED'}}, left:{style:'medium',color:{argb:'FF7C3AED'}}, right:{style:'medium',color:{argb:'FF7C3AED'}}, bottom:{style:'medium',color:{argb:'FF7C3AED'}} };
+        }
+      }
+    }
+
+    fill.style.width = '95%'; lbl.textContent = '파일 저장 중...';
+    const buf = await wb.xlsx.writeBuffer();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const customName = (document.getElementById('fileNameInp')?.value || pdfName + '_활동지').trim() || pdfName + '_활동지';
+    a.download = customName.endsWith('.xlsx') ? customName : customName + '.xlsx';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+
+    fill.style.width = '100%'; fill.style.background = 'linear-gradient(90deg,#10B981,#34D399)';
+    lbl.textContent = '✅ 다운로드 완료!';
+
+  } catch (err) {
+    console.error(err); lbl.textContent = `❌ 오류: ${err.message}`; fill.style.background = '#FCA5A5';
+  } finally {
+    btn.disabled = false; btn.textContent = '⬇️ 엑셀 파일 생성';
+    setTimeout(() => { prog.style.display = 'none'; fill.style.width = '0'; fill.style.background = ''; }, 8000);
+  }
+}
+</script>
+</body>
+</html>
